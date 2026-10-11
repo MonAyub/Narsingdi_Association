@@ -40,7 +40,7 @@ async function initDB() {
                 phone VARCHAR(50) NOT NULL,
                 upazila VARCHAR(100) DEFAULT '',
                 whatsapp VARCHAR(50) DEFAULT '',
-                profilePicture TEXT DEFAULT '',
+                profilePicture TEXT NULL,
                 approvedBy INT NULL,
                 approvedAt DATETIME NULL,
                 createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
