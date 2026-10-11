@@ -21,19 +21,9 @@ function formatRecord(record) {
 }
 
 // ==================== MIDDLEWARE ====================
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  process.env.CLIENT_URL
-].filter(Boolean);
-
+// Allow all origins (frontend and backend served from same Render domain)
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
-      return callback(null, true);
-    }
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -81,7 +71,7 @@ async function seedInitialData() {
 
         // 2. Seed Initial Members if table is empty
         const [memberCountRes] = await pool.query('SELECT COUNT(*) as count FROM members');
-        if (memberCountRes[0].count === 0) {
+        if (Number(memberCountRes[0].count) === 0) {
             const initialMembers = [
                 ["Udoy Saha", "BMB", "2020-2021", "Monohardi", "01718583244", "01718583244", "approved"],
                 ["Niloy Paul", "BGE", "2020-2021", "Raipura", "01619653550", "01619653550", "approved"],
@@ -104,7 +94,7 @@ async function seedInitialData() {
 
         // 3. Seed Initial Notices if table is empty
         const [noticeCountRes] = await pool.query('SELECT COUNT(*) as count FROM notices');
-        if (noticeCountRes[0].count === 0) {
+        if (Number(noticeCountRes[0].count) === 0) {
             const initialNotices = [
                 [
                     "Emergency Meeting Regarding Freshers' Ceremony",
@@ -139,7 +129,7 @@ async function seedInitialData() {
 
         // 4. Seed Initial Events if table is empty
         const [eventCountRes] = await pool.query('SELECT COUNT(*) as count FROM events');
-        if (eventCountRes[0].count === 0) {
+        if (Number(eventCountRes[0].count) === 0) {
             const initialEvents = [
                 [
                     "Freshers' Reception & Farewell 2025",
@@ -791,6 +781,44 @@ app.post('/api/notices', authenticateAdmin, async (req, res) => {
     }
 });
 
+// PUT /api/notices/:id (Admin only)
+app.put('/api/notices/:id', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, category, date, content, isActive } = req.body;
+
+        const updates = [];
+        const values = [];
+
+        if (title !== undefined) { updates.push('title = ?'); values.push(title.trim()); }
+        if (category !== undefined) { updates.push('category = ?'); values.push(category.toUpperCase()); }
+        if (date !== undefined) { updates.push('date = ?'); values.push(date.trim()); }
+        if (content !== undefined) { updates.push('content = ?'); values.push(content.trim()); }
+        if (isActive !== undefined) { updates.push('isActive = ?'); values.push(isActive ? 1 : 0); }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ success: false, error: 'No fields provided to update.' });
+        }
+
+        values.push(id);
+        const [result] = await pool.query(`UPDATE notices SET ${updates.join(', ')} WHERE id = ?`, values);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, error: 'Notice not found.' });
+        }
+
+        const [updated] = await pool.query('SELECT * FROM notices WHERE id = ?', [id]);
+        return res.status(200).json({
+            success: true,
+            message: 'Notice updated successfully.',
+            data: formatRecord(updated[0])
+        });
+    } catch (err) {
+        console.error('Error in PUT /api/notices/:id:', err);
+        return res.status(500).json({ success: false, error: 'Failed to update notice.' });
+    }
+});
+
 // DELETE /api/notices/:id (Admin only)
 app.delete('/api/notices/:id', authenticateAdmin, async (req, res) => {
     try {
@@ -818,11 +846,11 @@ app.delete('/api/notices/:id', authenticateAdmin, async (req, res) => {
 app.get('/api/events', async (req, res) => {
     try {
         const { type } = req.query;
-        let query = 'SELECT * FROM events';
+        let query = 'SELECT * FROM events WHERE 1=1';
         const params = [];
 
         if (type) {
-            query += ' WHERE LOWER(type) = LOWER(?)';
+            query += ' AND LOWER(type) = LOWER(?)';
             params.push(type.trim());
         }
 
@@ -871,6 +899,47 @@ app.post('/api/events', authenticateAdmin, async (req, res) => {
     } catch (err) {
         console.error('Error in POST /api/events:', err);
         return res.status(500).json({ success: false, error: 'Failed to create event.' });
+    }
+});
+
+// PUT /api/events/:id (Admin only)
+app.put('/api/events/:id', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, type, date, location, description } = req.body;
+
+        const updates = [];
+        const values = [];
+
+        if (title !== undefined) { updates.push('title = ?'); values.push(title.trim()); }
+        if (type !== undefined) {
+            const normalizedType = type.toLowerCase() === 'completed' ? 'Completed' : 'Upcoming';
+            updates.push('type = ?'); values.push(normalizedType);
+        }
+        if (date !== undefined) { updates.push('date = ?'); values.push(date.trim()); }
+        if (location !== undefined) { updates.push('location = ?'); values.push(location.trim()); }
+        if (description !== undefined) { updates.push('description = ?'); values.push(description.trim()); }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ success: false, error: 'No fields provided to update.' });
+        }
+
+        values.push(id);
+        const [result] = await pool.query(`UPDATE events SET ${updates.join(', ')} WHERE id = ?`, values);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, error: 'Event not found.' });
+        }
+
+        const [updated] = await pool.query('SELECT * FROM events WHERE id = ?', [id]);
+        return res.status(200).json({
+            success: true,
+            message: 'Event updated successfully.',
+            data: formatRecord(updated[0])
+        });
+    } catch (err) {
+        console.error('Error in PUT /api/events/:id:', err);
+        return res.status(500).json({ success: false, error: 'Failed to update event.' });
     }
 });
 
